@@ -21,10 +21,10 @@ import rpy2.robjects as robjects
 
 NUM_PARTS = 5
 
-convert = {'Evading apoptosis':'cellDeath.gif', 'Evading immune detection':'avoidImmuneDestruction.gif', 'Genome instability and mutation':'genomicInstability.gif', 'Insensitivity to antigrowth signals':'evadeGrowthSuppressors.gif', 'Limitless replicative potential':'immortality.gif', 'Reprogramming energy metabolism':'cellularEnergetics.gif', 'Self sufficiency in growth signals':'sustainedProliferativeSignalling.gif', 'Sustained angiogenesis':'angiogenesis.gif', 'Tissue invasion and metastasis':'invasion.gif', 'Tumor promoting inflammation':'promotingInflammation.gif'}
+#convert = {'Evading apoptosis':'cellDeath.gif', 'Evading immune detection':'avoidImmuneDestruction.gif', 'Genome instability and mutation':'genomicInstability.gif', 'Insensitivity to antigrowth signals':'evadeGrowthSuppressors.gif', 'Limitless replicative potential':'immortality.gif', 'Reprogramming energy metabolism':'cellularEnergetics.gif', 'Self sufficiency in growth signals':'sustainedProliferativeSignalling.gif', 'Sustained angiogenesis':'angiogenesis.gif', 'Tissue invasion and metastasis':'invasion.gif', 'Tumor promoting inflammation':'promotingInflammation.gif'}
 
 app = Flask(__name__)
-app.config.from_envvar('GLIOMA_SETTINGS')
+app.config.from_envvar('TCELL_SETTINGS')
 
 ######################################################################
 #### General helpers
@@ -44,20 +44,15 @@ def read_exps():
 ######################################################################
 
 GRAPH_COLOR_MAP = {
-    'control': '#6abd45',
-    'classical': 'black',
-    'neural': '#32689b',
-    'NA': 'grey',
-    'g_cimp': '#8a171a',
-    'proneural': '#ed2024',
-    'mesenchymal': '#faa41a'
+    'Ag85B_0H':'#a50026',
+    'Ag85B_2H':'#d73027',
+    'Ag85B_4H':'#f46d43',
+    'Ag85B_8H':'#fdae61',
+    'ESAT6_0H':'#313695',
+    'ESAT6_2H':'#4575b4',
+    'ESAT6_4H':'#74add1',
+    'ESAT6_8H':'#abd9e9',
 }
-
-# order in which the enrichment phenotypes are ordered
-ENRICHMENT_PHENOTYPES = [
-    'g_cimp', 'proneural', 'neural', 'classical', 'mesenchymal', 'control'
-]
-
 
 def phyper(q, m, n, k, lower_tail=False):
     """calls the R function phyper"""
@@ -87,38 +82,67 @@ def submat_data(submat, col_indexes):
             for i, idx in enumerate(col_indexes)]
     return sorted(data, key=lambda x: x[3])
 
+def subarray_data(subarray, col_indexes):
+    """given a sub array and a list of column indexes
+    that specify the columns, of the matrix, return a list
+    of (col_idx, median, min, max, lower_quartile, upper_quartile)
+    tuples
+    """
+    col_medians = np.median(submat, axis=0)
+    col_mins = np.min(submat, axis=0)
+    col_maxs = np.max(submat, axis=0)
+    col_upper_quarts = np.percentile(submat, q=75.0, axis=0)
+    col_lower_quarts = np.percentile(submat, q=25.0, axis=0)
+    data = [[idx,
+             col_mins[i],
+             col_lower_quarts[i],
+             col_medians[i],
+             col_upper_quarts[i],
+             col_maxs[i]
+             ]
+            for i, idx in enumerate(col_indexes)]
+    return sorted(data, key=lambda x: x[3])
 
-def cluster_data(cursor, cluster_id, df):
-    patient_map = {name: index
+def cluster_data_OLD(cursor, cluster_id, df):
+    cond_map = {name: index
                    for index, name in enumerate(df.columns.values)}
     gene_map = {name.upper(): index for index, name in enumerate(df.index)}
-
-    cursor.execute("""select g.symbol from bic_gene bg
+    cursor.execute("""select g.ucsc from bic_gene bg
 join gene g on bg.gene_id=g.id where bicluster_id=%s""", [cluster_id])
     genes = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("""select name from bic_pat bp
-join patient p on bp.patient_id=p.id where bicluster_id=%s""",
-                   [cluster_id])
-    patients = [row[0] for row in cursor.fetchall()]
-
-    cursor.execute("""select name from patient where id not in
-(select patient_id from bic_pat where bicluster_id=%s)""",
-                   [cluster_id])
-    excluded_patients = [row[0] for row in cursor.fetchall()]
-
-
     gene_indexes = sorted([gene_map[g.upper()] for g in genes])
-    patient_indexes = sorted([patient_map[p] for p in patients])
-    ex_patient_indexes = sorted([patient_map[p] for p in excluded_patients])
 
-    submat = df.values[np.ix_(gene_indexes, patient_indexes)]
-    in_data = submat_data(submat, patient_indexes)
+    Ag85B_indexes = sorted([cond_map[c] for c in ['Ag85B_0H_1','Ag85B_0H_2','Ag85B_0H_3','Ag85B_0H_4','Ag85B_2H_2','Ag85B_2H_3','Ag85B_2H_4','Ag85B_4H_2','Ag85B_4H_3','Ag85B_4H_4','Ag85B_8H_1','Ag85B_8H_3','Ag85B_8H_4']])
+    submat1 = df.values[np.ix_(gene_indexes, Ag85B_indexes)]
+    Ag85B_data = submat_data(submat1, Ag85B_indexes)
+    ESAT6_indexes = sorted([cond_map[c] for c in ['ESAT6_0H_1','ESAT6_0H_2','ESAT6_0H_3','ESAT6_0H_4','ESAT6_2H_1','ESAT6_2H_2','ESAT6_2H_3','ESAT6_2H_4','ESAT6_4H_1','ESAT6_4H_2','ESAT6_4H_3','ESAT6_4H_4','ESAT6_8H_2','ESAT6_8H_3','ESAT6_8H_4']])
+    submat2 = df.values[np.ix_(gene_indexes, ESAT6_indexes)]
+    ESAT6_data = submat_data(submat2, ESAT6_indexes)
+    return Ag85B_data, ESAT6_data
 
-    ex_submat = df.values[np.ix_(gene_indexes, ex_patient_indexes)]
-    out_data = submat_data(ex_submat, ex_patient_indexes)
-    return in_data, out_data
+def cluster_data(cursor, cluster_name, df):
+    cond_map = {name: index
+                   for index, name in enumerate(df.columns.values)}
 
+    bic_map = {name.upper(): index for index, name in enumerate(df.index)}
+    bic_index = bic_map[cluster_name.upper()]
+    col_indexes = [[cond_map[i] for i in c] for c in [['ESAT6_0H_1','ESAT6_0H_2','ESAT6_0H_3','ESAT6_0H_4'],['ESAT6_2H_1','ESAT6_2H_2','ESAT6_2H_3','ESAT6_2H_4'],['ESAT6_4H_1','ESAT6_4H_2','ESAT6_4H_3','ESAT6_4H_4'],['ESAT6_8H_2','ESAT6_8H_3','ESAT6_8H_4'],['Ag85B_0H_1','Ag85B_0H_2','Ag85B_0H_3','Ag85B_0H_4'],['Ag85B_2H_2','Ag85B_2H_3','Ag85B_2H_4'],['Ag85B_4H_2','Ag85B_4H_3','Ag85B_4H_4'],['Ag85B_8H_1','Ag85B_8H_3','Ag85B_8H_4']]]
+
+    print cond_map,col_indexes
+    data = []
+    idx = ['ESAT6_0H','ESAT6_2H','ESAT6_4H','ESAT6_8H','Ag85B_0H','Ag85B_2H','Ag85B_4H','Ag85B_8H']
+    for i in range(len(col_indexes)):
+        ci = col_indexes[i]
+        curDF = df.values[np.ix_([bic_index], ci)][0]
+        print curDF
+        col_median = np.median(curDF)
+        col_min = np.min(curDF)
+        col_max = np.max(curDF)
+        col_upper_quart = np.percentile(curDF, q=75.0)
+        col_lower_quart = np.percentile(curDF, q=25.0)
+        data.append([idx[i], col_min, col_lower_quart, col_median, col_upper_quart, col_max])
+    return data
 
 def subtype_enrichment(cursor, cluster_id, df):
     patient_map = {name: index
@@ -162,7 +186,7 @@ where pt.name <> 'NA'""")
 
     # sorted by median pValue
     sorted_patient_indexes = sorted_in_indexes + sorted_ex_indexes
-    
+
     # group patients into phenotype groups.
     # NOTE: the ptmap items need to be sorted, otherwise groupby fails to group correctly
     pt_patients = itertools.groupby(sorted(ptmap.items(), key=lambda pair: pair[1]),
@@ -206,7 +230,7 @@ where pt.name <> 'NA'""")
             if math.isinf(pvalue):
                 signum = -1 if pvalue < 0 else 1
                 pvalue = signum * -math.log10(10e-10)
-            
+
             if pvalue < min_pvalue:
                 min_pvalue = pvalue
             if pvalue > max_pvalue:
@@ -236,125 +260,55 @@ def index():
 def bicluster(bicluster=None):
     db = dbconn()
     c = db.cursor()
-    c.execute("""SELECT id,name,var_exp_fpc,var_exp_fpc_p_value,survival,survival_p_value
-FROM bicluster WHERE name=%s""", [bicluster])
-    bc_pk, bc_name, bc_varexp_fpc, bc_varexp_fpc_pval, bc_survival, bc_survival_pval = c.fetchone()
+    c.execute("""SELECT id,name,var_exp_fpc,var_exp_fpc_p_value FROM bicluster WHERE name=%s""", [bicluster])
+    bc_pk, bc_name, bc_varexp_fpc, bc_varexp_fpc_pval = c.fetchone()
     bic_info = {
         'pk': bc_pk,
         'name': bc_name,
         'varexp_fpc': bc_varexp_fpc,
         'varexp_fpc_pval': bc_varexp_fpc_pval,
-        'survival': bc_survival,
-        'survival_pval': bc_survival_pval,
-        'varexp_flag': bc_varexp_fpc_pval <= 0.05,
-        'survival_flag': bc_survival_pval <= 0.05
+        'varexp_flag': bc_varexp_fpc_pval <= 0.05
         }
 
     c.execute("""SELECT g.id, g.symbol, g.entrez FROM bic_gene bg join gene g on bg.gene_id=g.id where bg.bicluster_id=%s order by g.symbol""", [bc_pk])
     genes = list(c.fetchall())
-    c.execute("""SELECT p.id, p.name FROM bic_pat bp join patient p on p.id=bp.patient_id where bp.bicluster_id=%s order by p.name""", [bc_pk])
-    tumors = list(c.fetchall())
-    # Replication
-    c.execute("""SELECT * FROM replication WHERE bicluster_id=%s""", [bc_pk])
-    tmp = list(c.fetchall())
-    repConvert = {'French':'Gravendeel, et al. 2009','REMBRANDT':'Madhavan, et al. 2009','GSE7696':'Murat, et al. 2008'}
-    repPubmed = {'French':'19920198','REMBRANDT':'19208739','GSE7696':'18565887'}
-    replication = []
-
-    replicated = [0, 0]
-    bic_info['repl_coexp'] = False
-    bic_info['repl_survival'] = False
-
-    for i in tmp:
-        tmp1 = [0,0]
-        if bic_info['varexp_fpc_pval'] <= 0.05 and float(i[4])<=0.05:
-            tmp1[0] = 1
-            replicated[0] = 1
-            bic_info['repl_coexp'] = True
-
-        if (( bic_info['survival'] > 0 and (float(i[5]) > 0 and float(i[6])<=0.05)) or
-            ( bic_info['survival'] < 0 and (float(i[5]) < 0 and float(i[6])<=0.05))):
-            tmp1[1] = 1
-            replicated[1] = 1
-            bic_info['repl_survival'] = True
-
-        replication.append(list(i)+[repConvert[i[2]], repPubmed[i[2]]]+tmp1)
+    #c.execute("""SELECT * FROM exp_cond ec join bic_con bc on ec.id=bc.exp_cond_id WHERE bc.bicluster_id=%s ORDER BY ec.name""", [bc_pk])
+    #conds = list(c.fetchall())
 
     # Regulators
     elements = []
     elements.append({'data': { 'id': 'bc%d' % bc_pk, 'name': bc_name}, 'classes': 'bicluster' })
 
     regulators = []
-    c.execute("""SELECT g.id, g.symbol, tfr.action FROM tf_regulator tfr join gene g on tfr.gene_id=g.id
-WHERE tfr.bicluster_id=%s""", [bc_pk])
+    c.execute("""SELECT g.id, g.symbol, tfr.cor, tfr.p_value, tfr.ordinal FROM tf_regulator tfr join gene g on tfr.gene_id=g.id WHERE tfr.bicluster_id=%s""", [bc_pk])
     tfs = list(c.fetchall())
     tfList = []
     for tf in tfs:
-        known = 'No'
-        c.execute("""SELECT * FROM tf_crispr WHERE gene_id=%s""", [tf[0]])
-        for crispr in c.fetchall():
-            if float(crispr[4])<=0.05:
-                known = 'Yes'
-        regulators.append(['TF', tf[0], tf[1], tf[2].capitalize(), known])
-        tfList.append(tf[1])
-        elements.append({'data': { 'id': 'reg%d' % tf[0], 'name': tf[1] }, 'classes': 'tf' })
-        elements.append({'data': { 'id': 'tfbc%d' % tf[0], 'source': 'reg%d' % tf[0], 'target': 'bc%d' % bc_pk }, 'classes': tf[2] })
+        if not tf[1] in tfList:
+            tfList.append(tf[1])
+            action = 'Repressor'
+            if float(tf[2]) > 0:
+                action = 'Activator'
+            regulators.append(['TF', tf[0], tf[1], action, tf[2], tf[3], tf[4]])
+            elements.append({'data': { 'id': 'reg%d' % tf[0], 'name': tf[1] }, 'classes': 'tf' })
+            elements.append({'data': { 'id': 'tfbc%d' % tf[0], 'source': 'reg%d' % tf[0], 'target': 'bc%d' % bc_pk }, 'classes': action.lower() })
+        elif tf[4]=='Direct':
+            for i in range(len(regulators)):
+                if regulators[i][1]==tf[1]:
+                    regulators[i][6] = 'Direct'
 
-    c.execute("""SELECT mirna.id, mirna.name, mirna.mir2disease, mirna.hmdd
-FROM mirna_regulator mr join mirna on mirna.id=mr.mirna_id WHERE mr.bicluster_id=%s""", [bc_pk])
+    c.execute("""SELECT mirna.id, mirna.name FROM mirna_regulator mr join mirna on mirna.id=mr.mirna_id WHERE mr.bicluster_id=%s""", [bc_pk])
     mirnas = list(c.fetchall())
 
     mirnaList = []
     for mirna in mirnas:
         if not mirna[0] in mirnaList:
-            known = 'No'
-            if (not mirna[2]=='no') or (not mirna[3]==0):
-                known = 'Yes'
-            regulators.append(['miRNA', mirna[0], mirna[1], 'Repressor', known])
+            regulators.append(['miRNA', mirna[0], mirna[1], 'Repressor', 'Direct'])
             mirnaList.append(mirna[1])
             elements.append({'data': { 'id': 'reg%d' % mirna[0], 'name': mirna[1]}, 'classes': 'mirna' })
             elements.append({'data': { 'id': 'mirnabc%d' % mirna[0], 'source': 'reg%d' % mirna[0], 'target': 'bc%d' % bc_pk }, 'classes': 'repressor' })
 
-    regulators = sorted(regulators, key=lambda name: name[1])
-
-    # Get causal flows with bicluster
-    c.execute("""SELECT id,somatic_mutation_id,regulator_id,regulator_type,bicluster_id,leo_nb_atob,mlogp_m_atob
-FROM causal_flow WHERE bicluster_id=%s""", [bc_pk])
-    tmp_cf = c.fetchall()
-    causalFlows = []
-    
-
-    for cf_pk, cf_som_mut_id, cf_reg_id, cf_reg_type, cf_bc_id, cf_leo, cf_mlogp in tmp_cf:
-        if cf_reg_type == 'tf':
-            c.execute("""SELECT symbol FROM gene WHERE id=%s""", [cf_reg_id])
-            g1 = c.fetchone()[0]
-        else:
-            c.execute("""SELECT name FROM mirna WHERE id=%s""", [cf_reg_id])
-            g1 = c.fetchone()[0]
-
-        if (cf_reg_type == 'tf' and g1 in tfList) or (cf_reg_type == 'mirna' and g1 in mirnaList):
-            c.execute("""SELECT * FROM somatic_mutation WHERE id=%s""", [cf_som_mut_id])
-            m1 = c.fetchone()
-            if m1[2]=='gene':
-                c.execute("""SELECT symbol FROM gene WHERE id=%s""", [m1[1]])
-                mut = c.fetchone()[0]
-            elif m1[2]=='pathway':
-                c.execute("""SELECT name FROM nci_nature_pathway WHERE id=%s""", [m1[1]])
-                mut = c.fetchone()[0]
-            causalFlows.append([mut, g1])
-            elements.append({'data': { 'id': 'mut%d' % cf_som_mut_id, 'name': mut}, 'classes': 'genotype' })
-            elements.append({'data': { 'id': 'cf%d' % cf_pk, 'source': 'mut%d' % cf_som_mut_id, 'target': 'reg%d' % cf_reg_id } })
-
-    causalFlows = sorted(causalFlows, key=lambda mutation: mutation[0])
-
-    # Hallmarks of Cancer
-    c.execute("""SELECT hm.id,hm.name FROM hallmark hm join bic_hal bh on hm.id=bh.hallmark_id
-WHERE bh.bicluster_id=%s""", [bc_pk])
-    hallmarks = []
-    for hm_id, hm_name in c.fetchall():
-        hallmarks.append([hm_name, convert[hm_name] ])
-        elements.append({'data': { 'id': 'hm%d' % hm_id, 'name': hm_name}, 'classes': 'hallmark' })
-        elements.append({'data': { 'id': 'bchm%d' % hm_id, 'source': 'bc%d' % bc_pk, 'target': 'hm%d' % hm_id } })
+    regulators = sorted(regulators, key=lambda x: x[2])
 
     # GO
     c.execute("""SELECT go_bp.id, go_bp.go_id, go_bp.name FROM bic_go join go_bp on go_bp.id=bic_go.go_bp_id
@@ -367,30 +321,10 @@ WHERE bic_go.bicluster_id=%s""", [bc_pk])
 
     # Prepare graph plotting data
     exp_data = read_exps()
-    in_data, out_data = cluster_data(c, bc_pk, exp_data)
-    enrichment_pvalues, min_enrichment_pvalue, max_enrichment_pvalue = subtype_enrichment(c, bc_pk, exp_data)
-    js_enrichment_data = []
-    js_enrichment_colors = []
-    for part in enrichment_pvalues:
-        for phenotype in ENRICHMENT_PHENOTYPES:
-            js_enrichment_data.append([phenotype, part[phenotype]])
-            js_enrichment_colors.append(GRAPH_COLOR_MAP[phenotype])
-    enrichment_upper = -math.log10(0.05/30.0)
-    enrichment_lower = math.log10(0.05/30.0)
-    enrich_perc20 = len(js_enrichment_data) / 5
-    enrich_quintiles = [enrich_perc20 * i for i in range(1, 6)]
-
+    js_boxplot_data = cluster_data(c, bic_info['name'], exp_data)
     ratios_mean = np.mean(exp_data.values)
-    all_boxplot_data = in_data + out_data
-    patients = [exp_data.columns.values[item[0]] for item in all_boxplot_data]
-    c.execute("""select p.name, pt.name from patient p join phenotypes pt on p.phenotype_id=pt.id where p.name in (%s)""" %
-              ','.join(map(lambda p: '\'%s\'' % p, patients)))
-    ptmap = {patient: phenotype for patient, phenotype in c.fetchall()}
-    phenotypes = [ptmap[patient] for patient in patients]
-    boxplot_colors = [GRAPH_COLOR_MAP[pt] for pt in phenotypes]
-    js_boxplot_data = [[patients[i]] + item[1:] for i, item in enumerate(all_boxplot_data)]
-    perc20 = len(in_data) / 5
-    quintiles = [perc20 * i for i in range(1, 6)]
+    conditions = ['ESAT6_0H','ESAT6_2H','ESAT6_4H','ESAT6_8H','Ag85B_0H','Ag85B_2H','Ag85B_4H','Ag85B_8H']
+    boxplot_colors = [GRAPH_COLOR_MAP[c] for c in conditions]
     db.close()
 
     return render_template('bicluster.html', **locals())
@@ -404,7 +338,7 @@ def search():
     type ='gene'
     if not gene:
         return render_template('index.html')
-    if gene.find('hsa-')==-1:
+    if gene.find('mmu-')==-1:
         c.execute("""SELECT symbol FROM gene WHERE symbol=%s""", [gene])
         geneData = c.fetchall()
     else:
@@ -418,9 +352,9 @@ def search():
 
     symbol = geneData[0][0]
     if type == 'gene':
-        return redirect(url_for('gene', symbol=symbol))
+        return redirect(url_for('gene', symbol=symbol, regType=type))
     else:
-        return redirect(url_for('mirna', symbol=symbol))        
+        return redirect(url_for('mirna', symbol=symbol, regType=type))
 
 
 def __get_muts(c, gene_pk, symbol):
@@ -471,7 +405,7 @@ def __get_muts(c, gene_pk, symbol):
     return muts
 
 
-def __get_regulators(c, symbol):
+def __get_regulators(c, symbol, regType):
     regs = {}
     tmp_regs = c.fetchall()
     if len(tmp_regs)>0:
@@ -479,64 +413,70 @@ def __get_regulators(c, symbol):
         regs['biclusters'] = len(set([i[1] for i in tmp_regs]))
         regs['data'] = []
         # Collect all biclusters downstream regulated by TF or miRNA
+        done = []
         for reg in tmp_regs:
-            action = 'Rep.'
-            if type=='gene' and reg[3] == 'activator':
-                action = 'Act.'
-            c.execute("""SELECT name, survival, survival_p_value FROM bicluster WHERE id=%s""", [reg[1]])
-            b1 = c.fetchall()[0]
-            c.execute("SELECT hm.name FROM hallmark hm join bic_hal bh on hm.id=bh.hallmark_id WHERE bh.bicluster_id=%s",
-                      [reg[1]])
-            tmp1 = c.fetchall()
-            h1 = list(set([convert[i[0]] for i in tmp1]))
-            h2 = [[i[0],convert[i[0]]] for i in tmp1]
-            regs['data'].append([symbol, action, b1[0], b1[1], b1[2], h2])
+            if not reg[1] in done:
+                done.append(reg[1])
+                action = 'Repressor'
+                if regType=='gene' and float(reg[3]) > 0:
+                    action = 'Activator'
+                c.execute("""SELECT name FROM bicluster WHERE id=%s""", [reg[1]])
+                b1 = c.fetchall()[0]
+                c.execute("""SELECT go_bp_id FROM bic_go WHERE bic_go.bicluster_id=%s""", [reg[1]])
+                bg1 = c.fetchall()
+                #c.execute("SELECT hm.name FROM hallmark hm join bic_hal bh on hm.id=bh.hallmark_id WHERE bh.bicluster_id=%s", [reg[1]])
+                #tmp1 = c.fetchall()
+                #h1 = list(set([convert[i[0]] for i in tmp1]))
+                #h2 = [[i[0],convert[i[0]]] for i in tmp1]
+                regs['data'].append([symbol, action, b1[0], len(bg1)]) #, b1[1], b1[2]) , h2])
     return regs
 
 
 @app.route('/mirna')
 @app.route('/mirna/<symbol>')
-def mirna(symbol=None, defaults={'symbol': None}):
+def mirna(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
     # Get biclusters regulated by mirna
     db = dbconn()
     c = db.cursor()
     c.execute("""SELECT id FROM mirna WHERE name=%s""", [symbol])
     mirna_pk = c.fetchone()[0]
-    muts = __get_muts(c, mirna_pk, symbol)
+    #muts = __get_muts(c, mirna_pk, symbol)
     c.execute("""SELECT * FROM mirna_regulator WHERE mirna_id=%s""", [mirna_pk])
-    regs = __get_regulators(c, symbol)
+    regs = __get_regulators(c, symbol, 'mirna')
     db.close()
-    return render_template('search.html', gene=symbol, muts={}, regs=regs, bics={})
+    return render_template('search.html', gene=symbol, regs=regs, bics={})
 
 
 @app.route('/gene')
 @app.route('/gene/<symbol>')
-def gene(symbol=None, defaults={'symbol': None}):
+def gene(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
     db = dbconn()
     c = db.cursor()
-    c.execute("""SELECT id FROM gene WHERE symbol=%s""", [symbol])
-    gene_pk = c.fetchone()[0]
-    muts = __get_muts(c, gene_pk, symbol)
-    c.execute("""SELECT * FROM tf_regulator WHERE gene_id=%s""", [gene_pk])
-    regs = __get_regulators(c, symbol)
+    #c.execute("""SELECT id FROM gene WHERE symbol=%s""", [symbol])
+    #gene_pk = c.fetchone()[0]
+    #muts = __get_muts(c, gene_pk, symbol)
+    c.execute("""SELECT * FROM tf_regulator, gene WHERE tf_regulator.gene_id=gene.id AND gene.symbol=%s""", [symbol])
+    regs = __get_regulators(c, symbol,'gene')
 
     # Get biclusters that gene resides
     bics = {}
-    c.execute("SELECT * FROM bic_gene bg join bicluster b on bg.bicluster_id=b.id where bg.gene_id=%s", [gene_pk])
+    #c.execute("SELECT * FROM gene g join bic_gene bg on g.id=bg.gene_id join bicluster b on bg.bicluster_id=b.id where g.symbol=%s", [symbol])
+    c.execute("SELECT * FROM bic_gene bg, bicluster b, gene g where g.symbol=%s AND bg.gene_id=g.id AND b.id=bg.bicluster_id", [symbol])
     tmp_bics = c.fetchall()
     if len(tmp_bics) > 0:
         bics['name'] = gene
         bics['biclusters'] = len(tmp_bics)
         bics['data'] = []
         for bic1 in tmp_bics:
-            c.execute("SELECT hm.name FROM bic_hal bh join hallmark hm on bh.hallmark_id=hm.id WHERE bh.bicluster_id=%s",
-                      [bic1[3]])
+            #c.execute("SELECT hm.name FROM bic_hal bh join hallmark hm on bh.hallmark_id=hm.id WHERE bh.bicluster_id=%s", [bic1[3]])
+            #tmp1 = c.fetchall()
+            #h1 = list(set([convert[i[0]] for i in tmp1]))
+            #h2 = [[i[0],convert[i[0]]] for i in tmp1]
+            c.execute("SELECT * FROM bic_go WHERE bicluster_id=%s", [bic1[3]])
             tmp1 = c.fetchall()
-            h1 = list(set([convert[i[0]] for i in tmp1]))
-            h2 = [[i[0],convert[i[0]]] for i in tmp1]
-            bics['data'].append([bic1[4], bic1[5], bic1[6], bic1[7], bic1[8], h2])
+            bics['data'].append([bic1[4], bic1[5], bic1[6], len(tmp1)]) #, bic1[7], bic1[8]]) #, h2])
     db.close()
-    return render_template('search.html', gene=symbol, muts=muts, regs=regs, bics=bics)
+    return render_template('search.html', gene=symbol, regs=regs, bics=bics)
 
 
 @app.route('/network')
@@ -569,7 +509,7 @@ def genecompletions():
         tmpGene = [i[0] for i in c.fetchall()]
         c.execute("""SELECT name FROM mirna WHERE name LIKE %s""", [str(term)+'%'])
         tmpMiRNA = [i[0] for i in c.fetchall()]
-        json1 = json.dumps(tmpGene+tmpMiRNA)
+        json1 = json.dumps(list(set(tmpGene))+list(set(tmpMiRNA)))
     finally:
         db.close()
     return Response(response=json1, status=200, mimetype='application/json')
@@ -615,7 +555,7 @@ def combinatorial_network():
             graph_data.append({ 'data': { 'id': 'e%d' % i, 'source': edge['source'], 'target': edge['target'] } })
 
     return render_template('combinatorial_network.html', **locals())
-    
+
 
 if __name__ == '__main__':
     handler = logging.StreamHandler()

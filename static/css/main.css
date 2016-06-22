@@ -3,3 +3,13 @@ img.displayed {
     margin-left: auto;
     margin-right: auto;
 }
+.urdahlCIDR {
+    background-color:#292929;
+    width:160px;
+    line-height:40px;
+    text-align: center;
+    border-radius:5px;
+}
+img.urdahlCIDR {
+    vertical-align: middle;
+}
