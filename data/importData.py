@@ -30,16 +30,16 @@ ucsc2entrez = {}
 entrez2ucsc = {}
 symbol2entrez = {}
 entrez2symbol = {}
-inFile = open('ucsc2symbols.txt','r')
-inFile.readline() # Get rid of header
+inFile = open('ucsc2entrez2symbol.csv','r')
+#inFile.readline() # Get rid of header
 while 1:
     line = inFile.readline()
     if not line:
         break
-    splitUp = line.strip().split('\t')
+    splitUp = line.strip().split(',')
     ucscId = splitUp[0]
-    symbol = splitUp[1]
-    entrez = splitUp[2]
+    entrez = splitUp[1]
+    symbol = splitUp[2]
     if not ucscId in ucscConverter:
         ucscConverter[ucscId] = {'symbol':symbol,'entrez':entrez}
     ucsc2symbol[ucscId] = symbol
@@ -49,16 +49,18 @@ while 1:
         symbol2ucsc[symbol].append(ucscId)
     if not entrez=='NA':
         ucsc2entrez[ucscId] = entrez
-        symbol2entrez[symbol] = entrez
-        entrez2symbol[entrez] = symbol
-        if not entrez in entrez2ucsc:
-            entrez2ucsc[entrez] = [ucscId]
-        else:
-            entrez2ucsc[entrez].append(ucscId)
+        if not symbol=='NA':
+            symbol2entrez[symbol] = entrez
+            entrez2symbol[entrez] = symbol
+            if not entrez in entrez2ucsc:
+                entrez2ucsc[entrez] = [ucscId]
+            else:
+                entrez2ucsc[entrez].append(ucscId)
 
 inFile.close()
 print len(ucsc2entrez)
 
+"""
 inFile = gzip.open('synonymThesaurus.csv.gz','r')
 while 1:
     line = inFile.readline()
@@ -124,6 +126,7 @@ while 1:
         ucscConverter[splitUp[0]]['entrez'] = genesMMU[splitUp[0]]
 
 inFile.close()
+"""
 
 def compareMiRNANames(a, b):
     if a==b:
@@ -172,7 +175,7 @@ if doInserts:
     for gene in ucscConverter:
         if (not gene in done) and (not gene in genesInDb):
             done.append(gene)
-            if not ucscConverter[gene]['entrez']=='NA' and not ucscConverter[gene]['entrez']=='NA':
+            if not (ucscConverter[gene]['symbol']=='NA' or ucscConverter[gene]['entrez']=='NA'):
                 c.execute("""INSERT INTO gene (ucsc, symbol, entrez) VALUES (%s, %s, %s)""", [gene, ucscConverter[gene]['symbol'], ucscConverter[gene]['entrez']])
             elif not ucscConverter[gene]['symbol']=='NA':
                 c.execute("""INSERT INTO gene (ucsc, symbol) VALUES (%s,%s)""", [gene, ucscConverter[gene]['symbol']])
@@ -182,6 +185,64 @@ if doInserts:
 c.execute("""SELECT * FROM gene""")
 tmp = c.fetchall()
 print len(done), len(tmp)
+
+# Load up TF families
+tfFamilies = {}
+inFile = open('tfFamilies_musculus.csv','r')
+inFile.readline() # Get rid of header
+while 1:
+    line = inFile.readline()
+    if not line:
+        break
+    splitUp = line.strip().split(',')
+    tfFamilies[splitUp[0]] = splitUp[2].split(' ')
+
+inFile.close()
+
+# Enter in TF family information into the database
+c.execute("""SHOW COLUMNS FROM tf_family""")
+print c.fetchall()
+
+c.execute("""SELECT * FROM tf_family""")
+tmp = c.fetchall()
+tfFamInDb = [i[1] for i in tmp]
+
+if doInserts:
+    for tfFam in tfFamilies.keys():
+        if not tfFam in tfFamInDb:
+            c.execute("""INSERT INTO tf_family (family_name) VALUES (%s)""", [tfFam])
+    c.connection.commit()
+
+c.execute("""SELECT * FROM tf_family""")
+tmp = c.fetchall()
+print len(tfFamilies), len(tmp)
+
+# Enter in TF family gene information into the database
+c.execute("""SHOW COLUMNS FROM tf_fam_gene""")
+print c.fetchall()
+
+c.execute("""SELECT * FROM tf_fam_gene""")
+tmp = c.fetchall()
+tfFamGeneInDb = [i[1] for i in tmp]
+
+c.execute("""SELECT * FROM tf_family""")
+tmp = c.fetchall()
+tfFams = dict(zip([str(i[1]) for i in tmp],[i[0] for i in tmp]))
+
+c.execute("""SELECT * FROM gene""")
+tmp = c.fetchall()
+genes = dict(zip([str(i[3]) for i in tmp],[i[0] for i in tmp]))
+
+if doInserts:
+    for tfFam in tfFamilies:
+        for gene1 in tfFamilies[tfFam]:
+            if not exp_cond in tfFamGeneInDb and gene1 in genes:
+                c.execute("""INSERT INTO tf_fam_gene (tf_family_id, gene_id) VALUES (%s,%s)""", [tfFams[tfFam], genes[gene1]])
+    c.connection.commit()
+
+c.execute("""SELECT * FROM tf_fam_gene""")
+tmp = c.fetchall()
+print len(tmp)
 
 
 ### exp_condS ###
@@ -270,6 +331,7 @@ c.execute("""SELECT * FROM gene""")
 tmp = c.fetchall()
 genes = dict(zip([str(i[3]) for i in tmp],[i[0] for i in tmp]))
 
+"""
 go2gene = []
 inFile = open('gene2go.mmu','r')
 while 1:
@@ -279,6 +341,21 @@ while 1:
     splitUp = line.strip().split('\t')
     if splitUp[1] in genes and splitUp[2] in goTerms:
         go2gene.append([goTerms[splitUp[2]], genes[splitUp[1]]])
+
+inFile.close()
+"""
+
+go2gene = []
+inFile = open('entrez_go.csv','r')
+while 1:
+    line = inFile.readline()
+    if not line:
+        break
+    splitUp = line.strip().split(',')
+    tmpGO = splitUp[1].split(';')
+    for go1 in tmpGO:
+        if splitUp[0] in genes and go1 in goTerms:
+            go2gene.append([goTerms[go1], genes[splitUp[0]]])
 
 inFile.close()
 
@@ -717,13 +794,46 @@ tmp = c.fetchall()
 print len(tmp)
 #print len(tfRegulators)
 
-## TODO
-# Need to shove tftg_enrichments into database
+# Put TF target gene interactions into database
+tftgDB = {}
+inFile = open('tfbsDb_plus_and_minus_5000_entrez.csv','r')
+while 1:
+    line = inFile.readline()
+    if not line:
+        break
+    splitUp = line.strip().split(',')
+    if not splitUp[0] in tftgDB:
+        tftgDB[splitUp[0]] = []
+    tftgDB[splitUp[0]].append(splitUp[1])
 
+inFile.close()
 
-## TODO
-# Pull down the motif_matches and tftg_enrichment and match them up to bicluster gene 'bicluster_gene'
+# Load into database
+c.execute("""SELECT id, motif_name FROM known_motif""")
+tmp = c.fetchall()
+knownMotifs = dict(zip([str(i[1]).replace('$','_') for i in tmp],[str(i[0]) for i in tmp]))
 
+c.execute("""SELECT id, entrez FROM gene""")
+tmp = c.fetchall()
+genes = dict(zip([str(i[1]) for i in tmp],[str(i[0]) for i in tmp]))
+
+c.execute("""SELECT known_motif_id, gene_id FROM tf_targets""")
+tmp = c.fetchall()
+tfTargets = [str(i[0])+'_'+str(i[1]) for i in tmp]
+
+if doInserts:
+    for mot1 in tftgDB:
+        if mot1 in knownMotifs:
+            for g1 in tftgDB[mot1]:
+                if g1 in genes:
+                    if not str(knownMotifs[mot1])+'_'+str(genes[g1]) in tfTargets:
+                        c.execute("""INSERT INTO tf_targets (known_motif_id, gene_id) VALUES (%s, %s)""", [knownMotifs[mot1], genes[g1]])
+
+c.connection.commit()
+
+c.execute("""SELECT * FROM tf_targets""")
+tmp = c.fetchall()
+print len(tmp)
 
 ### miRNA REGULATORS ###
 #c.execute("""SELECT * FROM mirna""")

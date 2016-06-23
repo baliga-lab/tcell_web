@@ -55,6 +55,12 @@
         } );
         
         $(document).ready(function() {
+            $('#targets').DataTable( {
+                columnDefs: [
+                    {type: 'num', targets: 2}
+                ],                
+                "order": [[2, "desc"]]
+            });
             $('#regs').DataTable( {
                 columnDefs: [
                     {type: 'num', targets: 4}
@@ -184,7 +190,7 @@
         <h4>Genes</h4>
         <div class="container-fluid" style="margin-top: 20px;"></div>
         <div class='text-left'><ul class='list-inline'>{% for gene in genes %}
-            <li><a href='http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene[1] }}' target='_blank'>{{ gene[1] }}</a></li>
+            <li><a href='http://genome.ucsc.edu/cgi-bin/hgGene?hgg_gene={{ gene[2] }}' target='_blank'>{{ gene[1] }}</a></li>
             {% endfor %}</ul></div>
       </div>
                         
@@ -198,7 +204,7 @@
                 </tr>
             </thead>
             <tbody>
-          {% for reg1 in regulators %}
+            {% for reg1 in regulators %}
             <tr>
               <td>{{ reg1[0] }}</td><td><a href='/search?gene={{reg1[2]}}'>{{ reg1[2] }}</a></td><td>{% if reg1[3]=='Repressor' %}<div style='font-weight: bold; color:#990000'>{{ reg1[3] }}</div>{% endif %}{% if reg1[3]=='Activator' %}<div style='font-weight: bold; color:#009900'>{{ reg1[3] }}</div>{% endif %}</td><td>{{"%.2f"|format(reg1[4])}}</td><td>{{"%.1E"|format(reg1[5])}}</td><td>{{ reg1[6] }}</td>
           </tr>
@@ -206,6 +212,26 @@
           </tbody>
         </table>        
       </div>      
+      
+      <div class='bs-callout bs-callout-default' id='targetGenes'>
+        <h4>Regulator Target Genes</h4>
+        <div class="container-fluid" style="margin-top: 20px;"></div>
+        <table class='table table-bordered table-striped text-center' id='targets'>
+            <thead>
+                <tr>
+                    <td>Regulator<br>(Expanded)</td><td>Known Motif</td><td>Number Targets</td><td>Target Genes</td>
+                </tr>
+            </thead>
+            <tbody>
+            {% for km1 in targets %}
+            <tr>
+                <td>{{ km1[0] }}</td><td>{{ km1[1] }}</td><td>{{ km1[2] }}</td><td>{% if (km1[3] | count)>0 %}{% for gene in km1[3] %}<a href='http://genome.ucsc.edu/cgi-bin/hgGene?hgg_gene={{ gene[1] }}' target='_blank'>{{ gene[0] }}</a> {% endfor %}{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>        
+      </div>      
+
       <div class='bs-callout bs-callout-default' id='gobp'>
         <h4>Enriched GO Biological Processes</h4>
         <div class="container-fluid" style="margin-top: 20px;"></div>
@@ -218,7 +244,7 @@
           <tbody>
             {% for gobp1 in gobps %}
             <tr>
-              <td>{{ gobp1[2] | capitalize }}</td><td><a href='http://amigo.geneontology.org/amigo/term/{{ gobp1[1] }}' target='_blank'>{{ gobp1[1] }}</a></td><td>{% if (gobp1[3] | count)>0 %}{% for gene in gobp1[3] %}<a href='http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene }}' target='_blank'>{{ gene }}</a> {% endfor %}{% endif %}</td>
+              <td>{{ gobp1[2] | capitalize }}</td><td><a href='http://amigo.geneontology.org/amigo/term/{{ gobp1[1] }}' target='_blank'>{{ gobp1[1] }}</a></td><td>{% if (gobp1[3] | count)>0 %}{% for gene in gobp1[3] %}<a href='http://genome.ucsc.edu/cgi-bin/hgGene?hgg_gene={{ gene }}' target='_blank'>{{ gene }}</a> {% endfor %}{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>

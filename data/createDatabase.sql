@@ -136,10 +136,10 @@ CREATE TABLE tf_regulator (
 
 CREATE TABLE tf_targets (
     id integer unsigned NOT NULL AUTO_INCREMENT,
-    tf_id integer unsigned,
+    known_motif_id integer unsigned,
     gene_id integer unsigned,
     PRIMARY KEY (id),
-    FOREIGN KEY (tf_id) REFERENCES gene (id),
+    FOREIGN KEY (known_motif_id) REFERENCES known_motif (id),
     FOREIGN KEY (gene_id) REFERENCES gene (id)
 );
 

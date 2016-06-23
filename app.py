@@ -149,9 +149,10 @@ def subtype_enrichment(cursor, cluster_id, df):
                    for index, name in enumerate(df.columns.values)}
     gene_map = {name.upper(): index for index, name in enumerate(df.index)}
 
-    cursor.execute("""select g.symbol from bic_gene bg
+    cursor.execute("""select g.symbol, g.ucsc from bic_gene bg
 join gene g on bg.gene_id=g.id where bicluster_id=%s""", [cluster_id])
     genes = [row[0] for row in cursor.fetchall()]
+
 
     cursor.execute("""select name from bic_pat bp
 join patient p on bp.patient_id=p.id where bicluster_id=%s""",
@@ -270,8 +271,15 @@ def bicluster(bicluster=None):
         'varexp_flag': bc_varexp_fpc_pval <= 0.05
         }
 
-    c.execute("""SELECT g.id, g.symbol, g.entrez FROM bic_gene bg join gene g on bg.gene_id=g.id where bg.bicluster_id=%s order by g.symbol""", [bc_pk])
-    genes = list(c.fetchall())
+    c.execute("""SELECT g.id, g.symbol, g.ucsc FROM bic_gene bg join gene g on bg.gene_id=g.id where bg.bicluster_id=%s order by g.symbol""", [bc_pk])
+    tmp = list(c.fetchall())
+    genes = []
+    for i in range(len(tmp)):
+        if tmp[i][1]==None:
+            genes.append([tmp[i][0],tmp[i][2],tmp[i][2]])
+        else:
+            genes.append([tmp[i][0],tmp[i][1],tmp[i][2]])
+    print genes
     #c.execute("""SELECT * FROM exp_cond ec join bic_con bc on ec.id=bc.exp_cond_id WHERE bc.bicluster_id=%s ORDER BY ec.name""", [bc_pk])
     #conds = list(c.fetchall())
 
@@ -283,6 +291,7 @@ def bicluster(bicluster=None):
     c.execute("""SELECT g.id, g.symbol, tfr.cor, tfr.p_value, tfr.ordinal FROM tf_regulator tfr join gene g on tfr.gene_id=g.id WHERE tfr.bicluster_id=%s""", [bc_pk])
     tfs = list(c.fetchall())
     tfList = []
+    targets = []
     for tf in tfs:
         if not tf[1] in tfList:
             tfList.append(tf[1])
@@ -297,6 +306,50 @@ def bicluster(bicluster=None):
                 if regulators[i][1]==tf[1]:
                     regulators[i][6] = 'Direct'
 
+        # For each tf regulator grab all target genes
+        c.execute("""SELECT * FROM known_motif WHERE gene_id=%s""", [tf[0]])
+        knownMotifs = list(c.fetchall())
+        for mot1 in knownMotifs:
+            c.execute("""SELECT * FROM tf_targets, bic_gene WHERE bic_gene.bicluster_id=%s AND tf_targets.known_motif_id=%s AND bic_gene.gene_id=tf_targets.gene_id""", [bc_pk, mot1[0]])
+            tmp = c.fetchall()
+            if len(tmp)>0:
+                targGenes = []
+                for i in tmp:
+                    c.execute("""SELECT * FROM gene WHERE gene.id=%s""", [i[2]])
+                    tmp2 = c.fetchall()[0]
+                    if tmp2[1]==None:
+                        targGenes.append([tmp2[0],tmp2[2],tmp2[2]])
+                    else:
+                        targGenes.append([tmp2[0],tmp2[1],tmp2[2]])
+                targGenes = sorted(targGenes, key=lambda x: x[2])
+                if not [tf[1], mot1[3], ', '.join([i[2] for i in targGenes])] in targets:
+                    targets.append([tf[1], mot1[3], len(targGenes), [[i[2],i[1]] for i in targGenes]])
+        if tf[4]=='Expanded':
+            #
+            c.execute("""SELECT tf_family_id FROM tf_fam_gene WHERE gene_id=%s""", [tf[0]])
+            tmp = c.fetchall()
+            if len(tmp)>0:
+                print 'tmp',tmp
+                c.execute("""SELECT tfg.gene_id, g.symbol FROM tf_fam_gene as tfg, gene as g WHERE tfg.tf_family_id=%s AND tfg.gene_id!=%s AND tfg.gene_id=g.id""", [tmp[0][0], tf[0]])
+                for tmpGene in c.fetchall():
+                    c.execute("""SELECT * FROM known_motif WHERE gene_id=%s""", [tmpGene[0]])
+                    knownMotifs = list(c.fetchall())
+                    for mot1 in knownMotifs:
+                        c.execute("""SELECT * FROM tf_targets, bic_gene WHERE bic_gene.bicluster_id=%s AND tf_targets.known_motif_id=%s AND bic_gene.gene_id=tf_targets.gene_id""", [bc_pk, mot1[0]])
+                        tmp = c.fetchall()
+                        if len(tmp)>0:
+                            targGenes = []
+                            for i in tmp:
+                                c.execute("""SELECT * FROM gene WHERE gene.id=%s""", [i[2]])
+                                tmp2 = c.fetchall()[0]
+                                if tmp2[1]==None:
+                                    targGenes.append([tmp2[0],tmp2[2],tmp2[2]])
+                                else:
+                                    targGenes.append([tmp2[0],tmp2[1],tmp2[2]])
+                            targGenes = sorted(targGenes, key=lambda x: x[2])
+                            if not [tf[1]+' ('+tmpGene[1]+')', mot1[3], ', '.join([i[2] for i in targGenes])] in targets:
+                                targets.append([tf[1]+' ('+tmpGene[1]+')', mot1[3], len(targGenes), [[i[2],i[1]] for i in targGenes]])
+
     c.execute("""SELECT mirna.id, mirna.name FROM mirna_regulator mr join mirna on mirna.id=mr.mirna_id WHERE mr.bicluster_id=%s""", [bc_pk])
     mirnas = list(c.fetchall())
 
@@ -310,14 +363,18 @@ def bicluster(bicluster=None):
 
     regulators = sorted(regulators, key=lambda x: x[2])
 
+
+
+
     # GO
-    c.execute("""SELECT go_bp.id, go_bp.go_id, go_bp.name FROM bic_go join go_bp on go_bp.id=bic_go.go_bp_id
-WHERE bic_go.bicluster_id=%s""", [bc_pk])
+    c.execute("""SELECT go_bp.id, go_bp.go_id, go_bp.name FROM bic_go, go_bp WHERE go_bp.id=bic_go.go_bp_id and bic_go.bicluster_id=%s""", [bc_pk])
     tmps = list(c.fetchall())
     gobps = []
     for gobp in tmps:
         c.execute("""SELECT distinct gene.symbol FROM go_gene, gene, bic_gene WHERE go_gene.go_bp_id=%s AND bic_gene.bicluster_id=%s AND go_gene.gene_id=gene.id AND gene.id=bic_gene.gene_id order by gene.symbol""", [gobp[0], bc_pk])
-        gobps.append(list(gobp) + [[row[0] for row in c.fetchall()]])
+        tmp = c.fetchall()
+        if len(tmp)>0:
+            gobps.append(list(gobp) + [[row[0] for row in tmp]])
 
     # Prepare graph plotting data
     exp_data = read_exps()
