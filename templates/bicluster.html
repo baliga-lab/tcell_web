@@ -5,6 +5,7 @@
     <script type="text/javascript" src="https://cdn.datatables.net/t/dt/jq-2.2.0,dt-1.10.11/datatables.min.js"></script>
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/t/dt/jq-2.2.0,dt-1.10.11/datatables.min.css"/>
     <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="http://code.highcharts.com/modules/heatmap.js"></script>
     <script src="https://code.highcharts.com/highcharts-more.js"></script>
 
     <script src="/static/js/dagre.min.js"></script>
@@ -20,14 +21,14 @@
       }
       #boxplot-graph {
         width: 60%;
-        height: 250px;
+        height: 300px;
         left: 0px;
         top: 0px;
         float: left;
       }
-      #enrichment-graph {
+      #heatmap-graph {
         width: 40%;
-        height: 250px;
+        height: 300px;
         left: 0px;
         top: 0px;
         float: left;
@@ -104,6 +105,22 @@
         ]
       });
 
+        $('#heatmap-graph').highcharts({
+          chart: {type: 'heatmap', zoomType: 'xy'},
+          legend: {enabled: true},
+          title: {text: ''},
+          xAxis: { categories: {{conditions|safe|replace('_', ' ')}} },
+          yAxis: { title: {text: 'Genes'} },
+          colorAxis: {
+            min: {{heatmap_min}}, max: {{heatmap_max}},
+            stops: [ [0, '#0000ff'], [0.5, '#ffffff'], [1.0, '#ff0000'] ]
+          },
+          series: [{
+            data: {{heatmap_values|safe}}
+          }]
+        });
+
+
         var graphElements = {{elements|safe}};
 
         var cy = cytoscape({
@@ -171,7 +188,7 @@
                 </tr>
             </table>
             <div id="boxplot-graph"></div>
-            <div id="enrichment-graph"></div>
+            <div id="heatmap-graph"></div>
         </div>
         <table class='table table-bordered table-striped text-center'>
           <tr>

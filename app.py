@@ -257,6 +257,23 @@ def index():
     return render_template('index.html')
 
 
+def __heatmap_data(conn, bicluster):
+    cur = conn.cursor()
+    cur.execute("select ucsc from gene g join bic_gene bg on bg.gene_id=g.id join bicluster b on bg.bicluster_id=b.id where b.name=%s", [bicluster])
+    ucsc_ids = [row[0] for row in cur.fetchall()]
+    df = pandas.read_csv(app.config['CMONKEY_EXPR_FILE'], sep=',', index_col=0)
+    col_prefixes = sorted(set([name[:-2] for name in df.columns.values]))
+    sel = df[df.index.isin(ucsc_ids)]
+    target_df = None
+    for col_prefix in col_prefixes:
+        mysel = sel.filter(regex=col_prefix + "_.*")
+        median_df = mysel.median(axis=1).to_frame(name=col_prefix)
+        if target_df is None:
+            target_df = median_df
+        else:
+            target_df = target_df.join(median_df)
+    return target_df
+
 @app.route('/bicluster/<bicluster>')
 def bicluster(bicluster=None):
     db = dbconn()
@@ -363,9 +380,6 @@ def bicluster(bicluster=None):
 
     regulators = sorted(regulators, key=lambda x: x[2])
 
-
-
-
     # GO
     c.execute("""SELECT go_bp.id, go_bp.go_id, go_bp.name FROM bic_go, go_bp WHERE go_bp.id=bic_go.go_bp_id and bic_go.bicluster_id=%s""", [bc_pk])
     tmps = list(c.fetchall())
@@ -382,8 +396,20 @@ def bicluster(bicluster=None):
     ratios_mean = np.mean(exp_data.values)
     conditions = ['ESAT6_0H','ESAT6_2H','ESAT6_4H','ESAT6_8H','Ag85B_0H','Ag85B_2H','Ag85B_4H','Ag85B_8H']
     boxplot_colors = [GRAPH_COLOR_MAP[c] for c in conditions]
-    db.close()
 
+    # Heatmap
+    heatmap_df = __heatmap_data(db, bicluster)
+    heatmap_min = heatmap_df.values.min()
+    heatmap_max = heatmap_df.values.max()
+    heatmap_genes = [g for g in heatmap_df.index]
+    heatmap_values = []
+    num_rows = len(heatmap_genes)
+    for y in range(num_rows):
+        i_y = num_rows - y
+        for x in range(heatmap_df.values.shape[1]):
+            heatmap_values.append({'x': x, 'y': i_y, 'value': heatmap_df.values[y][x], 'name': heatmap_genes[y]})
+
+    db.close()
     return render_template('bicluster.html', **locals())
 
 
