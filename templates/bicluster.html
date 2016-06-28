@@ -110,14 +110,18 @@
           legend: {enabled: true},
           title: {text: ''},
           xAxis: { categories: {{conditions|safe|replace('_', ' ')}} },
-          yAxis: { title: {text: 'Genes'} },
+          yAxis: { title: {text: 'Genes'}, categories: {{heatmap_genes|safe}}, labels: { enabled: false } },
           colorAxis: {
             min: {{heatmap_min}}, max: {{heatmap_max}},
             stops: [ [0, '#0000ff'], [0.5, '#ffffff'], [1.0, '#ff0000'] ]
           },
           series: [{
             data: {{heatmap_values|safe}}
-          }]
+          }],
+          tooltip: {
+            headerFormat: '<span style="color: {point.color}">\u25CF</span> <b>{point.key}:</b><br/>',
+            pointFormat: '{point.value}'
+          }
         });
 
 
