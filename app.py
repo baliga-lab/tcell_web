@@ -259,8 +259,15 @@ def index():
 
 def __heatmap_data(conn, bicluster):
     cur = conn.cursor()
-    cur.execute("select ucsc from gene g join bic_gene bg on bg.gene_id=g.id join bicluster b on bg.bicluster_id=b.id where b.name=%s", [bicluster])
-    ucsc_ids = [row[0] for row in cur.fetchall()]
+    cur.execute("select g.ucsc, g.symbol from gene g join bic_gene bg on bg.gene_id=g.id join bicluster b on bg.bicluster_id=b.id where b.name=%s", [bicluster])
+    tmp = cur.fetchall()
+    ucsc_ids = [row[0] for row in tmp]
+    geneSymbols = []
+    for i in tmp:
+        if not i[1]=='NA':
+            geneSymbols.append(i[1])
+        else:
+            geneSymbols.append(i[0])
     df = pandas.read_csv(app.config['CMONKEY_EXPR_FILE'], sep=',', index_col=0)
     col_prefixes = sorted(set([name[:-2] for name in df.columns.values]))
     sel = df[df.index.isin(ucsc_ids)]
@@ -272,7 +279,7 @@ def __heatmap_data(conn, bicluster):
             target_df = median_df
         else:
             target_df = target_df.join(median_df)
-    return target_df
+    return target_df, geneSymbols
 
 @app.route('/bicluster/<bicluster>')
 def bicluster(bicluster=None):
@@ -398,10 +405,11 @@ def bicluster(bicluster=None):
     boxplot_colors = [GRAPH_COLOR_MAP[c] for c in conditions]
 
     # Heatmap
-    heatmap_df = __heatmap_data(db, bicluster)
+    heatmap_df, geneSymbols = __heatmap_data(db, bicluster)
     heatmap_min = heatmap_df.values.min()
     heatmap_max = heatmap_df.values.max()
-    heatmap_genes = [g for g in heatmap_df.index]
+    #heatmap_genes = [g for g in heatmap_df.index]
+    heatmap_genes = geneSymbols
     heatmap_values = []
     num_rows = len(heatmap_genes)
     for y in range(num_rows):
