@@ -531,7 +531,10 @@ def gene(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
             #h2 = [[i[0],convert[i[0]]] for i in tmp1]
             c.execute("SELECT * FROM bic_go WHERE bicluster_id=%s", [bic1[3]])
             tmp1 = c.fetchall()
-            bics['data'].append([bic1[4], bic1[5], bic1[6], len(tmp1)]) #, bic1[7], bic1[8]]) #, h2])
+            #bics['data'].append([bic1[4], bic1[5], bic1[6], len(tmp1)]) #, bic1[7], bic1[8]]) #, h2])
+            c.execute("SELECT g.symbol FROM tf_regulator tf, gene g WHERE tf.bicluster_id=%s AND tf.gene_id=g.id", [bic1[3]])
+            tmp2 = list(set(c.fetchall()))
+            bics['data'].append([bic1[4], bic1[5], bic1[6], ', '.join([i[0] for i in tmp2]), len(tmp1)]) #, bic1[7],bic1[8]]) #, h2])
     db.close()
     return render_template('search.html', gene=symbol, regs=regs, bics=bics)
 

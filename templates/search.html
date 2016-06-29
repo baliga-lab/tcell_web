@@ -91,13 +91,13 @@
                             <table id='biclusters' class='table table-bordered text-center'>
                                 <thead>
                                     <tr>
-                                        <td>Bicluster</td><td>Var. Exp. FPC<br>(Perm. <i>p</i>-value)</td><td>GO Biological <br>Process Terms</td>
+                                        <td width='20%'>Bicluster</td><td width='20%'>Var. Exp. FPC<br>(Perm. <i>p</i>-value)</td><td width='40%'>Regulators</td><td width='10%'>GO Biological <br>Process Terms</td>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for bic1 in bics['data'] %}
                                     <tr>
-                                        <td><a href="{{url_for('bicluster', bicluster=bic1[0])}}">{{ bic1[0] | upper }}</a></td><td>{{"%.2f"|format(bic1[1])}} ({{"%.1E"|format(bic1[2])}})</td><td>{{ bic1[3] }}</td>
+                                        <td><a href="{{url_for('bicluster', bicluster=bic1[0])}}">{{ bic1[0] | upper }}</a></td><td>{{"%.2f"|format(bic1[1])}} ({{"%.1E"|format(bic1[2])}})</td><td>{{ bic1[3] }}</td><td>{{ bic1[4] }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
