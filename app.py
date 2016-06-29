@@ -279,7 +279,10 @@ def __heatmap_data(conn, bicluster):
             target_df = median_df
         else:
             target_df = target_df.join(median_df)
-    return target_df, geneSymbols
+    heatmap_min = df.values.min()
+    heatmap_max = df.values.max()
+    absmax = max(abs(heatmap_max), abs(heatmap_min))
+    return target_df, geneSymbols, -absmax, absmax
 
 @app.route('/bicluster/<bicluster>')
 def bicluster(bicluster=None):
@@ -405,9 +408,7 @@ def bicluster(bicluster=None):
     boxplot_colors = [GRAPH_COLOR_MAP[c] for c in conditions]
 
     # Heatmap
-    heatmap_df, geneSymbols = __heatmap_data(db, bicluster)
-    heatmap_min = heatmap_df.values.min()
-    heatmap_max = heatmap_df.values.max()
+    heatmap_df, geneSymbols, heatmap_min, heatmap_max = __heatmap_data(db, bicluster)
     #heatmap_genes = [g for g in heatmap_df.index]
     heatmap_genes = geneSymbols
     heatmap_values = []
