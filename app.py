@@ -10,6 +10,7 @@ from functools import wraps
 import MySQLdb
 from flask import Flask, Response, url_for, redirect, render_template, request, session, flash, jsonify
 import flask
+from functools import wraps
 
 import math
 import itertools
@@ -28,6 +29,23 @@ app.config.from_envvar('TCELL_SETTINGS')
 ######################################################################
 #### General helpers
 ######################################################################
+
+def check_auth(username, password):
+    return username == app.config['BASIC_USER'] and password == app.config['BASIC_PASS']
+
+def authenticate():
+    return Response('Could not verify your access level for that URL.\n'
+            'You have to login with proper credentials', 401,
+            {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 def dbconn():
     return MySQLdb.connect(host=app.config['HOST'], user=app.config['USER'],
@@ -252,6 +270,7 @@ def unhandled_exception(e):
     return render_template('unknown_error.html')
 
 @app.route('/')
+@requires_auth
 def index():
     return render_template('index.html')
 
@@ -293,6 +312,7 @@ def __heatmap_data(conn, bicluster):
     return heatmap_values, [geneSymbols[i] for i in ucsc_ids], -absmax, absmax
 
 @app.route('/bicluster/<bicluster>')
+@requires_auth
 def bicluster(bicluster=None):
     db = dbconn()
     c = db.cursor()
@@ -431,6 +451,7 @@ def bicluster(bicluster=None):
 
 
 @app.route('/search')
+@requires_auth
 def search():
     gene = request.args.get('gene')
     db = dbconn()
@@ -534,6 +555,7 @@ def __get_regulators(c, symbol, regType):
 
 @app.route('/mirna')
 @app.route('/mirna/<symbol>')
+@requires_auth
 def mirna(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
     # Get biclusters regulated by mirna
     db = dbconn()
@@ -549,6 +571,7 @@ def mirna(symbol=None, regType=None, defaults={'symbol': None, 'regType': None})
 
 @app.route('/gene')
 @app.route('/gene/<symbol>')
+@requires_auth
 def gene(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
     db = dbconn()
     c = db.cursor()
@@ -583,26 +606,31 @@ def gene(symbol=None, regType=None, defaults={'symbol': None, 'regType': None}):
 
 
 @app.route('/network')
+@requires_auth
 def network():
     return render_template('network.html')
 
 
 @app.route('/about')
+@requires_auth
 def about():
     return render_template('about.html')
 
 
 @app.route('/download')
+@requires_auth
 def download():
     return render_template('download.html')
 
 
 @app.route('/citation')
+@requires_auth
 def citation():
     return render_template('citation.html')
 
 
 @app.route('/genecompletions')
+@requires_auth
 def genecompletions():
     term = request.args.get('term')
     db = dbconn()
@@ -619,6 +647,7 @@ def genecompletions():
 
 
 @app.route('/combinatorial_network')
+@requires_auth
 def combinatorial_network():
     with open(app.config['NODES_FILE'], 'r') as infile:
         csvreader = csv.reader(infile, delimiter=',')
