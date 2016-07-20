@@ -223,7 +223,7 @@ print c.fetchall()
 
 c.execute("""SELECT * FROM tf_fam_gene""")
 tmp = c.fetchall()
-tfFamGeneInDb = [i[1] for i in tmp]
+tfFamGeneInDb = [str(i[1])+'_'+str(i[2]) for i in tmp]
 
 c.execute("""SELECT * FROM tf_family""")
 tmp = c.fetchall()
@@ -231,13 +231,19 @@ tfFams = dict(zip([str(i[1]) for i in tmp],[i[0] for i in tmp]))
 
 c.execute("""SELECT * FROM gene""")
 tmp = c.fetchall()
-genes = dict(zip([str(i[3]) for i in tmp],[i[0] for i in tmp]))
+genes = {}
+for i in tmp:
+    if not str(i[3]) in genes:
+        genes[str(i[3])] = []
+    genes[str(i[3])].append(i[0])
 
 if doInserts:
     for tfFam in tfFamilies:
         for gene1 in tfFamilies[tfFam]:
-            if not exp_cond in tfFamGeneInDb and gene1 in genes:
-                c.execute("""INSERT INTO tf_fam_gene (tf_family_id, gene_id) VALUES (%s,%s)""", [tfFams[tfFam], genes[gene1]])
+            if gene1 in genes:
+                for gene2 in genes[gene1]:
+                    if not str(tfFams[tfFam])+'_'+str(gene2) in tfFamGeneInDb:
+                        c.execute("""INSERT INTO tf_fam_gene (tf_family_id, gene_id) VALUES (%s,%s)""", [tfFams[tfFam], gene2])
     c.connection.commit()
 
 c.execute("""SELECT * FROM tf_fam_gene""")

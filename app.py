@@ -18,7 +18,6 @@ import pandas
 import numpy as np
 import rpy2.robjects as robjects
 
-
 NUM_PARTS = 5
 
 #convert = {'Evading apoptosis':'cellDeath.gif', 'Evading immune detection':'avoidImmuneDestruction.gif', 'Genome instability and mutation':'genomicInstability.gif', 'Insensitivity to antigrowth signals':'evadeGrowthSuppressors.gif', 'Limitless replicative potential':'immortality.gif', 'Reprogramming energy metabolism':'cellularEnergetics.gif', 'Self sufficiency in growth signals':'sustainedProliferativeSignalling.gif', 'Sustained angiogenesis':'angiogenesis.gif', 'Tissue invasion and metastasis':'invasion.gif', 'Tumor promoting inflammation':'promotingInflammation.gif'}
@@ -262,27 +261,36 @@ def __heatmap_data(conn, bicluster):
     cur.execute("select g.ucsc, g.symbol from gene g join bic_gene bg on bg.gene_id=g.id join bicluster b on bg.bicluster_id=b.id where b.name=%s", [bicluster])
     tmp = cur.fetchall()
     ucsc_ids = [row[0] for row in tmp]
-    geneSymbols = []
+    geneSymbols = {}
+    symbol2ucsc = {}
     for i in tmp:
         if not i[1]=='NA':
-            geneSymbols.append(i[1])
+            geneSymbols[i[0]] = i[1]
+            symbol2ucsc[i[1]] = i[0]
         else:
-            geneSymbols.append(i[0])
+            geneSymbols[i[0]] = i[0]
+            symbol2ucsc[i[0]] = i[0]
+
     df = pandas.read_csv(app.config['CMONKEY_EXPR_FILE'], sep=',', index_col=0)
-    col_prefixes = sorted(set([name[:-2] for name in df.columns.values]))
-    sel = df[df.index.isin(ucsc_ids)]
-    target_df = None
-    for col_prefix in col_prefixes:
-        mysel = sel.filter(regex=col_prefix + "_.*")
-        median_df = mysel.median(axis=1).to_frame(name=col_prefix)
-        if target_df is None:
-            target_df = median_df
-        else:
-            target_df = target_df.join(median_df)
+
+    cond_map = {name: index for index, name in enumerate(df.columns.values)}
+    gene_map = {name: index for index, name in enumerate(df.index)}
+    symbols = sorted(symbol2ucsc.keys(), reverse=True)
+    print symbols
+    gene_indexes = [gene_map[symbol2ucsc[g]] for g in symbols]
+    col_indexes = [[cond_map[i] for i in c] for c in [['ESAT6_0H_1','ESAT6_0H_2','ESAT6_0H_3','ESAT6_0H_4'],['ESAT6_2H_1','ESAT6_2H_2','ESAT6_2H_3','ESAT6_2H_4'],['ESAT6_4H_1','ESAT6_4H_2','ESAT6_4H_3','ESAT6_4H_4'],['ESAT6_8H_2','ESAT6_8H_3','ESAT6_8H_4'],['Ag85B_0H_1','Ag85B_0H_2','Ag85B_0H_3','Ag85B_0H_4'],['Ag85B_2H_2','Ag85B_2H_3','Ag85B_2H_4'],['Ag85B_4H_2','Ag85B_4H_3','Ag85B_4H_4'],['Ag85B_8H_1','Ag85B_8H_3','Ag85B_8H_4']]]
+    print col_indexes
+    heatmap_values = []
+    idx = ['ESAT6_0H','ESAT6_2H','ESAT6_4H','ESAT6_8H','Ag85B_0H','Ag85B_2H','Ag85B_4H','Ag85B_8H']
+    for i in range(len(col_indexes)):
+        for j in range(len(gene_indexes)):
+            curDF = df.values[np.ix_([gene_indexes[j]], col_indexes[i])][0]
+            print curDF, np.mean(curDF)
+            heatmap_values.append({'x': i, 'y': j, 'value': np.mean(curDF), 'name': symbols[j]})
     heatmap_min = df.values.min()
     heatmap_max = df.values.max()
     absmax = max(abs(heatmap_max), abs(heatmap_min))
-    return target_df, geneSymbols, -absmax, absmax
+    return heatmap_values, [geneSymbols[i] for i in ucsc_ids], -absmax, absmax
 
 @app.route('/bicluster/<bicluster>')
 def bicluster(bicluster=None):
@@ -408,15 +416,15 @@ def bicluster(bicluster=None):
     boxplot_colors = [GRAPH_COLOR_MAP[c] for c in conditions]
 
     # Heatmap
-    heatmap_df, geneSymbols, heatmap_min, heatmap_max = __heatmap_data(db, bicluster)
+    heatmap_values, geneSymbols, heatmap_min, heatmap_max = __heatmap_data(db, bicluster)
     #heatmap_genes = [g for g in heatmap_df.index]
     heatmap_genes = geneSymbols
-    heatmap_values = []
-    num_rows = len(heatmap_genes)
-    for y in range(num_rows):
-        i_y = num_rows - y
-        for x in range(heatmap_df.values.shape[1]):
-            heatmap_values.append({'x': x, 'y': i_y, 'value': heatmap_df.values[y][x], 'name': heatmap_genes[y]})
+    #heatmap_values = []
+    #num_rows = len(heatmap_genes)
+    #for y in range(num_rows):
+    #    i_y = num_rows - y
+    #    for x in range(heatmap_df.values.shape[1]):
+    #        heatmap_values.append({'x': x, 'y': i_y, 'value': heatmap_df.values[y][x], 'name': heatmap_genes[y]})
 
     db.close()
     return render_template('bicluster.html', **locals())
